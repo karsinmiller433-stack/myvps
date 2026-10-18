@@ -1,59 +1,27 @@
-name: Windows-RDP
+name: Window 10
 
-on: 
-  workflow_dispatch:
+on: [push, workflow_dispatch]
 
 jobs:
   build:
+
     runs-on: windows-latest
-    timeout-minutes: 360
+    timeout-minutes: 9999
+
 
     steps:
-    - name: Download & Install Ngrok via Choco
-      run: |
-        choco install ngrok -y
-    - name: Authenticate Ngrok
-      run: |
-        ngrok config add-authtoken 3Kq7LiNTUO8UnsmMKjgERuRcsBR_3wUSpxt1kvCrGR5JsBmgL
-    - name: Enable Remote Desktop
-      run: |
-        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
-        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
-    - name: Create RDP Session Tunnel
-      run: |
-        Start-Process ngrok -ArgumentList "tcp 3389"
-        echo "=========================================================="
-        echo "Waiting for Ngrok tunnel to initialize..."
-        echo "=========================================================="
-        
-        # Retry loop to wait for the local API to become available
-        $URL = $null
-        for ($i=0; $i -lt 12; $i++) {
-          Start-Sleep -Seconds 5
-          try {
-            $Endpoints = Invoke-RestMethod -Uri http://127.0.0 -ErrorAction Stop
-            if ($Endpoints.tunnels.public_url) {
-              $URL = $Endpoints.tunnels.public_url
-              break
-            }
-          } catch {}
-        }
-
-        if ($null -eq $URL) {
-          Write-Error "Ngrok tunnel failed to start. Please check if your token is valid or expired."
-          exit 1
-        }
-
-        $CleanURL = $URL.Replace("tcp://", "")
-        Write-Host "Connect to your VPS using this Address: $CleanURL"
-        Write-Host "Username: runneradmin"
-        Write-Host "Password: Password123!"
-        echo "=========================================================="
-    - name: Keep Alive Loop
-      run: |
-        $count = 0
-        while ($count -lt 72) {
-          Start-Sleep -Seconds 300
-          $count++
-        }
+    - name: Download
+      run: Invoke-WebRequest https://bin.equinox.io/c/4VmDzA7iaHb/ngrok-stable-windows-amd64.zip -OutFile ngrok.zip
+    - name: Extract
+      run: Expand-Archive ngrok.zip
+    - name: Auth
+      run: .\ngrok\ngrok.exe authtoken 3Kq7LiNTUO8UnsmMKjgERuRcsBR_3wUSpxt1kvCrGR5JsBmgL
+      env:
+        NGROK_AUTH_TOKEN: 3Kq7LiNTUO8UnsmMKjgERuRcsBR_3wUSpxt1kvCrGR5JsBmgL
+    - name: Enable TS
+      run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server'-name "fDenyTSConnections" -Value 0
+    - run: Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+    - run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
+    - run: Set-LocalUser -Name "runneradmin" -Password (ConvertTo-SecureString -AsPlainText "@cyb3rking" -Force)
+    - name: Create Tunnel
+      run: .\ngrok\ngrok.exe tcp 3389
