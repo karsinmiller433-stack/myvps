@@ -1,0 +1,44 @@
+name: Windows-RDP
+
+on: 
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 360
+
+    steps:
+    - name: Download & Extract Ngrok
+      run: |
+        Invoke-WebRequest https://equinox.io -OutFile ngrok.zip
+        Expand-Archive ngrok.zip
+    - name: Authenticate Ngrok
+      run: |
+        .\ngrok\ngrok.exe config add-authtoken 3Kq7LiNTUO8UnsmMKjgERuRcsBR_3wUSpxt1kvCrGR5JsBmgL
+    - name: Enable Remote Desktop
+      run: |
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
+    - name: Create RDP Session Tunnel
+      run: |
+        Start-Process .\ngrok\ngrok.exe -ArgumentList "tcp 3389"
+        echo "=========================================================="
+        echo "Retrieving RDP connection details from Ngrok API..."
+        echo "=========================================================="
+        Start-Sleep -Seconds 10
+        $Endpoints = Invoke-RestMethod -Uri http://127.0.0
+        $URL = $Endpoints.tunnels.public_url
+        $CleanURL = $URL.Replace("tcp://", "")
+        Write-Host "Connect to your VPS using this Address: $CleanURL"
+        Write-Host "Username: runneradmin"
+        Write-Host "Password: Password123!"
+        echo "=========================================================="
+    - name: Keep Alive Loop
+      run: |
+        $count = 0
+        while ($count -lt 72) {
+          Start-Sleep -Seconds 300
+          $count++
+        }
