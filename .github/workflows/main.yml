@@ -9,13 +9,12 @@ jobs:
     timeout-minutes: 360
 
     steps:
-    - name: Download & Extract Ngrok
+    - name: Download & Install Ngrok via Choco
       run: |
-        Invoke-WebRequest https://equinox.io -OutFile ngrok.zip
-        Expand-Archive ngrok.zip
+        choco install ngrok -y
     - name: Authenticate Ngrok
       run: |
-        .\ngrok\ngrok.exe config add-authtoken 3Kq7LiNTUO8UnsmMKjgERuRcsBR_3wUSpxt1kvCrGR5JsBmgL
+        ngrok config add-authtoken 3Kq7LiNTUO8UnsmMKjgERuRcsBR_3wUSpxt1kvCrGR5JsBmgL
     - name: Enable Remote Desktop
       run: |
         Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
@@ -23,13 +22,29 @@ jobs:
         Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
     - name: Create RDP Session Tunnel
       run: |
-        Start-Process .\ngrok\ngrok.exe -ArgumentList "tcp 3389"
+        Start-Process ngrok -ArgumentList "tcp 3389"
         echo "=========================================================="
-        echo "Retrieving RDP connection details from Ngrok API..."
+        echo "Waiting for Ngrok tunnel to initialize..."
         echo "=========================================================="
-        Start-Sleep -Seconds 10
-        $Endpoints = Invoke-RestMethod -Uri http://127.0.0
-        $URL = $Endpoints.tunnels.public_url
+        
+        # Retry loop to wait for the local API to become available
+        $URL = $null
+        for ($i=0; $i -lt 12; $i++) {
+          Start-Sleep -Seconds 5
+          try {
+            $Endpoints = Invoke-RestMethod -Uri http://127.0.0 -ErrorAction Stop
+            if ($Endpoints.tunnels.public_url) {
+              $URL = $Endpoints.tunnels.public_url
+              break
+            }
+          } catch {}
+        }
+
+        if ($null -eq $URL) {
+          Write-Error "Ngrok tunnel failed to start. Please check if your token is valid or expired."
+          exit 1
+        }
+
         $CleanURL = $URL.Replace("tcp://", "")
         Write-Host "Connect to your VPS using this Address: $CleanURL"
         Write-Host "Username: runneradmin"
